@@ -252,6 +252,11 @@ func (m *mockServer) GetLockWatcher() *services.LockWatcher {
 	return nil
 }
 
+// GetCreateHostUser gets the server's lock watcher.
+func (m *mockServer) GetCreateHostUser() bool {
+	return false
+}
+
 // Implementation of ssh.Conn interface.
 type mockSSHConn struct {
 	remoteAddr net.Addr

@@ -79,6 +79,10 @@ type SessionRegistry struct {
 	// is closing.
 	sessions    map[rsession.ID]*session
 	sessionsMux sync.Mutex
+
+	// users is used for automatic user creation when new sessions are
+	// started
+	users HostUsers
 }
 
 type SessionRegistryConfig struct {
@@ -123,12 +127,18 @@ func NewSessionRegistry(cfg SessionRegistryConfig) (*SessionRegistry, error) {
 		return nil, trace.Wrap(err)
 	}
 
+	users, err := NewHostUsers(cfg.Srv.Context())
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+
 	return &SessionRegistry{
 		SessionRegistryConfig: cfg,
 		log: log.WithFields(log.Fields{
 			trace.Component: teleport.Component(teleport.ComponentSession, cfg.Srv.Component()),
 		}),
 		sessions: make(map[rsession.ID]*session),
+		users:    users,
 	}, nil
 }
 
@@ -187,6 +197,27 @@ func (s *SessionRegistry) OpenSession(ch ssh.Channel, ctx *ServerContext) error 
 
 		return nil
 	}
+
+	if ctx.srv.GetCreateHostUser() {
+		ui, err := ctx.Identity.RoleSet.HostUsers(ctx.srv.GetInfo())
+		if err != nil && !trace.IsAccessDenied(err) {
+			log.Debug("Error while checking host users creation permission: ", err)
+		}
+
+		existsErr := s.users.UserExists(ctx.Identity.Login)
+		if trace.IsAccessDenied(err) && existsErr != nil {
+			return trace.WrapWithMessage(err, "Insufficient permission for host user creation")
+		}
+		userCloser, err := s.users.CreateUser(ctx.Identity.Login, ui)
+		if err != nil && !trace.IsAlreadyExists(err) {
+			log.Debugf("Error creating user %s: %s", ctx.Identity.Login, err)
+			return trace.Wrap(err)
+		}
+		if userCloser != nil {
+			ctx.AddCloser(userCloser)
+		}
+	}
+
 	// session not found? need to create one. start by getting/generating an ID for it
 	sid, found := ctx.GetEnv(sshutils.SessionEnvVar)
 	if !found {
