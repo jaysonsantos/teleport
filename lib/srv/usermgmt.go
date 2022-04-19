@@ -21,6 +21,7 @@ import (
 	"errors"
 	"io"
 	"os/user"
+	"strings"
 	"time"
 
 	"github.com/gravitational/teleport/api/types"
@@ -58,10 +59,19 @@ type HostUsersBackend interface {
 	CreateUser(name string, groups []string) error
 	// DeleteUser deletes a user from a host.
 	DeleteUser(name string) error
+	// TestSudoersFile ensures that a sudoers file to be written is
+	// valid
+	TestSudoersFile(contents []byte) error
+	// WriteSudoersFile creates the users sudoer file
+	WriteSudoersFile(user string, entries []byte) error
+	// RemoveSudoersFile deletes a users /etc/sudoers.d file
+	RemoveSudoersFile(user string) error
 }
 
 // HostUsersProvisioningBackend is used to implement HostUsersBackend
-type HostUsersProvisioningBackend struct{}
+type HostUsersProvisioningBackend struct {
+	sudoersPath string
+}
 
 type userCloser struct {
 	users    HostUsers
@@ -140,11 +150,25 @@ func (u *HostUserManagment) CreateUser(name string, ui *services.HostUsersInfo) 
 	if err != nil && !trace.IsAlreadyExists(err) {
 		return nil, trace.WrapWithMessage(err, "error while creating user")
 	}
-	return &userCloser{
+
+	closer := &userCloser{
 		username: name,
 		users:    u,
 		backend:  u.backend,
-	}, nil
+	}
+
+	if len(ui.Sudoers) != 0 {
+		contents := []byte(strings.Join(ui.Sudoers, "\n"))
+		if err := u.backend.TestSudoersFile(contents); err != nil {
+			return closer, trace.Wrap(err)
+		}
+
+		if err := u.backend.WriteSudoersFile(name, contents); err != nil {
+			return closer, trace.Wrap(err)
+		}
+	}
+
+	return closer, nil
 }
 
 func (u *HostUserManagment) createGroupIfNotExist(group string) error {
@@ -171,7 +195,10 @@ func (u *HostUserManagment) DeleteAllUsers() error {
 	}
 	var errs []error
 	for _, name := range users {
-		errs = append(errs, u.DeleteUser(name, teleportGroup.Gid))
+		errs = append(errs,
+			u.DeleteUser(name, teleportGroup.Gid),
+		)
+
 	}
 	return trace.NewAggregate(errs...)
 }
@@ -190,11 +217,18 @@ func (u *HostUserManagment) DeleteUser(username string, gid string) error {
 	for _, id := range ids {
 		if id == gid {
 			err := u.backend.DeleteUser(username)
-			if errors.Is(err, ErrUserLoggedIn) {
-				log.Debugf("Not deleting user %q, user has another session, or running process", username)
-				return nil
+			if err != nil {
+				if errors.Is(err, ErrUserLoggedIn) {
+					log.Debugf("Not deleting user %q, user has another session, or running process", username)
+					return nil
+				}
+				return trace.Wrap(err)
 			}
-			return trace.Wrap(err)
+
+			if err := u.backend.RemoveSudoersFile(username); err != nil {
+				return trace.Wrap(err)
+			}
+			return nil
 		}
 	}
 	log.Debugf("User %q not deleted: not a temporary user", username)
