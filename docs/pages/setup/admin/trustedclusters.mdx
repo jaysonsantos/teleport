@@ -116,162 +116,254 @@ how to set up this cluster, see one of our
 
 ## Step 1/4. Establish trust between clusters
 
-{/* TODO: Resume here */}
+Teleport establishes trust between the root cluster and a leaf cluster using
+**join tokens**. To register your leaf cluster as a Trusted Cluster, you will first
+create a token for it via the root cluster's Auth Service. 
 
-<Tabs>
-<TabItem scope={["oss", "enterprise"]} label="Self-Hosted">
+You will then use the Auth Service on the leaf cluster to create a Trusted
+Cluster resource. The resource will include the join token, proving to the root
+cluster that the leaf cluster is the one you expected to register.
 
-There are two ways to create join tokens: to statically define them in a
-configuration file or to create them on the fly using the `tctl` tool.
+### Create a join token
 
-<Admonition
+You can create a join token using the `tctl` tool.
+
+First, log in to the root cluster.
+
+<ScopedBlock scope={["oss", "enterprise"]}>
+
+```code
+$ tsh login --user=myuser --proxy=teleport.example.com
+> Profile URL:        https://teleport.example.com:443
+  Logged in as:       myuser
+  Cluster:            teleport.example.com
+  Roles:              access, auditor, editor
+  Logins:             root
+  Kubernetes:         enabled
+  Valid until:        2022-04-29 03:07:22 -0400 EDT [valid for 12h0m0s]
+  Extensions:         permit-agent-forwarding, permit-port-forwarding, permit-pty
+```
+
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
+
+```code
+$ tsh login --user=myuser --proxy=mytenant.teleport.sh
+> Profile URL:        https://mytenant.teleport.sh:443
+  Logged in as:       myuser
+  Cluster:            mytenant.teleport.sh
+  Roles:              access, auditor, editor
+  Logins:             root
+  Kubernetes:         enabled
+  Valid until:        2022-04-29 03:07:22 -0400 EDT [valid for 12h0m0s]
+  Extensions:         permit-agent-forwarding, permit-port-forwarding, permit-pty
+```
+
+</ScopedBlock>
+
+Execute the following command on your development machine:
+
+```code
+# Generates a Trusted Cluster token to allow an inbound connection from a leaf cluster:
+$ tctl tokens add --type=trusted_cluster --ttl=5m --labels=env=demo
+# Example output:
+# The cluster invite token: (=presets.tokens.first=)
+# This token will expire in 5 minutes
+```
+
+This command generates a Trusted Cluster join token with labels. Every leaf
+cluster that uses this token to join the root cluster will inherit the label
+`env:demo`.
+
+The token can be used multiple times and has an expiration time of 5 minutes.
+
+Copy the join token for later use. If you need to display your join token again,
+run the following command:
+
+```code
+$ tctl tokens ls
+Token                                                            Type            Labels   Expiry Time (UTC)           
+---------------------------------------------------------------- --------------- -------- ---------------------------                      
+(=presets.tokens.first=)                                 trusted_cluster env=demo 28 Apr 22 19:19 UTC (4m48s) 
+```
+
+<Details title="Revoking join tokens" opened={false}>
+
+You can revoke a join token with the following command:
+
+```code
+$ tctl tokens rm (=presets.tokens.first=)
+```
+
+</Details>
+
+<Notice
   type="tip"
-  title="Important"
 >
 
   It's important to note that join tokens are only used to establish a
   connection for the first time. Clusters will exchange certificates and
   won't use tokens to re-establish their connection afterward.
 
-</Admonition>
+</Notice>
 
-### Static join tokens
+### Define a Trusted Cluster resource
 
-To create a static join token, update the configuration file on the "root"
-cluster to look like this:
-
-```yaml
-# fragment of /etc/teleport.yaml:
-auth_service:
-  enabled: true
-  tokens:
-  # If using static tokens we recommend using tools like `pwgen -s 32`
-  # to generate sufficiently random tokens of 32+ byte length
-  - trusted_cluster:mk9JgEVqsgz6pSsHf4kJPAHdVDVtpuE0
-```
-
-This token can be used an unlimited number of times.
-
-### Dynamic Join Tokens
-
-Creating a token dynamically with a CLI tool offers the advantage of applying a
-time-to-live (TTL) interval on it, i.e. it will be impossible to re-use the
-token after a specified time.
-
-To create a token using the CLI tool, execute this command on the Auth Server
-of cluster "root":
+Log out of the root cluster.
 
 ```code
-# Generates a Trusted Cluster token to allow an inbound connection from a leaf cluster:
-$ tctl tokens add --type=trusted_cluster --ttl=5m
-# Example output:
-# The cluster invite token: (=presets.tokens.first=)
-# This token will expire in 5 minutes
-
-# Generates a Trusted Cluster token with labels.
-# Every cluster joined using this token will inherit env:prod labels.
-$ tctl tokens add --type=trusted_cluster --labels=env=prod
-
-# You can also list the outstanding non-expired tokens:
-$ tctl tokens ls
-
-# ... or delete/revoke an invitation:
-$ tctl tokens rm (=presets.tokens.first=)
+$ tsh logout
 ```
-The token created above can be used multiple times and has
-an expiration time of 5 minutes.
 
-<Admonition title="Security implications" type="warning">
+Log in to the leaf cluster:
 
-Consider the security implications when deciding which token method to use.
-Short-lived tokens decrease the window for an attack but will require any
-automation which uses these tokens to refresh them regularly.
-
-</Admonition>
-</TabItem>
-<TabItem scope={["cloud"]} label="Teleport Cloud">
-
-You can create a join token on the fly using the `tctl` tool.
-
-<Admonition
-  type="tip"
-  title="Important"
->
-
-  It's important to note that join tokens are only used to establish a
-  connection for the first time. Clusters will exchange certificates and
-  won't use tokens to re-establish their connection afterward.
-
-</Admonition>
-
-To create a token using the CLI tool, execute these commands on your development
-machine:
+<ScopedBlock scope={["oss", "enterprise"]}>
 
 ```code
-# Generates a Trusted Cluster token to allow an inbound connection from a leaf cluster:
-$ tctl tokens add --type=trusted_cluster --ttl=5m
-# Example output:
-# The cluster invite token: (=presets.tokens.first=)
-# This token will expire in 5 minutes
-
-# Generates a Trusted Cluster token with labels.
-# Every cluster joined using this token will inherit env:prod labels.
-$ tctl tokens add --type=trusted_cluster --labels=env=prod
-
-# You can also list the outstanding non-expired tokens:
-$ tctl tokens ls
-
-# ... or delete/revoke an invitation:
-$ tctl tokens rm (=presets.tokens.first=)
+$ tsh login --user=myuser --proxy=cluster.example.com
 ```
-The token created above can be used multiple times and has
-an expiration time of 5 minutes.
 
-</TabItem>
-</Tabs>
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
 
+```code
+$ tsh login --user=myuser --proxy=leaftenant.teleport.sh
+```
 
-Users of Teleport will recognize that this is the same way you would add any
-Node to a cluster. 
+</ScopedBlock>
 
-Now, the administrator of the leaf cluster must create the following
-resource file:
+To finish establishing trust between your leaf cluster and your root cluster,
+create a file called `trusted_cluster.yaml` with the following content:
 
 ```yaml
 # cluster.yaml
 kind: trusted_cluster
 version: v2
 metadata:
-  # The Trusted Cluster name MUST match the 'cluster_name' setting of the
-  # root cluster
   name: root
 spec:
-  # This field allows to create tunnels that are disabled, but can be enabled later.
   enabled: true
-  # The token expected by the "root" cluster:
   token: ba4825847f0378bcdfe18113c4998498
-  # The address in 'host:port' form of the reverse tunnel listening port on the
-  # "root" proxy server:
   tunnel_addr: root.example.com:3024
-  # The address in 'host:port' form of the web listening port on the
-  # "root" proxy server:
   web_proxy_addr: root.example.com:443
-  # The role mapping allows to map user roles from one cluster to another
-  # (enterprise editions of Teleport only)
   role_map:
     - remote: "admin"    # users who have "admin" role on "root"
       local: ["auditor"] # will be assigned "auditor" role when logging into "leaf"
 ```
 
-Then, use `tctl create` to add the file:
+Change the fields of `trusted_cluster.yaml` as follows:
+
+#### `metadata.name`
+
+Use the name of your root cluster, e.g., <ScopedBlock
+scope={["oss", "enterprise"]}>`teleport.example.com`</ScopedBlock><ScopedBlock scope="cloud">`mytenant.teleport.sh`</ScopedBlock>.
+
+#### `spec.token`
+
+This is join token you created earlier.
+
+#### `spec.tunnel_addr`
+
+This is the reverse tunnel address of the Proxy Service in the root cluster. Run
+the following command to retrieve the port used for reverse tunneling:
+
+<ScopedBlock scope={["oss", "enterprise"]}>
 
 ```code
-$ tctl create cluster.yaml
+$ curl https://teleport.example.com/webapi/ping | jq .proxy.ssh.tunnel_listen_addr
+"0.0.0.0:3024"
 ```
 
-At this point, the users of the "root" cluster should be able to see "leaf" in the list of available clusters.
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
+
+```code
+$ curl https://mytenant.teleport.sh/webapi/ping | jq .proxy.ssh.tunnel_listen_addr
+"0.0.0.0:3024"
+```
+
+</ScopedBlock>
+
+Use this port and the address of the root cluster's Proxy Service.
+
+#### `web_proxy_addr`
+
+This is the address of the Proxy Service on the root cluster. Obtain this with the
+following command:
+
+<ScopedBlock scope={["oss", "enterprise"]}>
+
+```code
+$ curl https://teleport.example.com/webapi/ping | jq .proxy.ssh.public_addr
+"teleport.example.com:443"
+```
+
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
+
+```code
+$ curl https://mytenant.teleport.sh/webapi/ping | jq .proxy.ssh.public_addr
+"mytenant.teleport.sh:443"
+```
+
+</ScopedBlock>
+
+#### `spec.role_map`
+
+This field determines the roles that users of the root cluster will acquire when
+they log in a Node on the leaf cluster.
+
+For each element in the list of values, `remote` indicates the name of a role on
+the root cluster. `local` indicates the names of roles on the leaf cluster. Any
+user with the specified role on the root cluster will obtain roles specified in
+`local` when logging in to the leaf cluster.
+
+For example, consider this configuration:
+
+```yaml
+  role_map:
+    - remote: "admin"
+      local: ["auditor", "editor"]
+```
+
+Any user with the `admin` role on the `root` cluster will be assigned the
+`auditor` and `editor` roles when logging in to the leaf cluster.
+
+### Create a Trusted Cluster resource
+
+Still logged in to your leaf cluster, create the Trusted Cluster:
+
+```code
+$ tctl create trusted_cluster.yaml
+```
+
+At this point, users of the root cluster should see the following when they run
+`tsh clusters`, where `teleport.example.com` is the name of the root cluster:
+
+<ScopedBlock scope={["oss", "enterprise"]}>
+
+```code
+$ tsh clusters
+tsh clusters
+Cluster Name         Status Cluster Type Selected 
+-------------------- ------ ------------ -------- 
+teleport.example.com online root         *            
+```
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
+
+```code
+$ tsh clusters
+tsh clusters
+Cluster Name       Status Cluster Type Selected 
+------------------ ------ ------------ -------- 
+mytenant.teleport.sh online root         *            
+```
+</ScopedBlock>
 
 ## Step 2/4. Manage access to your Trusted Cluster
+
+{/* TODO RESUME HERE */}
 
 ### Apply labels
 
