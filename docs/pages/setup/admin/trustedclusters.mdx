@@ -30,31 +30,93 @@ This guide will explain how to:
 
 ## Prerequisites
 
-(!docs/pages/includes/edition-prereqs-tabs.mdx!)
+<Tabs>
+<TabItem scope={["oss"]} label="Open Source">
 
-- Launch a second Teleport cluster in order to follow this guide. 
+- Two running Teleport clusters. For details on how to set up your clusters, see
+  one of our [Getting Started](/docs/getting-started) guides.
 
-  We will call this cluster the **leaf cluster**. The cluster you typically use
-  to follow guides will be called the **root cluster**. We will show you how to
-  establish trust between the leaf cluster and the root cluster via Trusted
-  Clusters.
+- The `tctl` admin tool and `tsh` client tool version >= (=teleport.version=).
 
-- A host that is running a Teleport Node. See [Adding
-  Nodes](../adding-nodes.mdx) for how to launch a Teleport Node in your cluster.
+  ```code
+  $ tctl version
+  # Teleport v(=teleport.version=) go(=teleport.golang=)
+
+  $ tsh version
+  # Teleport v(=teleport.version=) go(=teleport.golang=)
+  ```
+
+  See [Installation](/docs/installation.mdx) for details.
+
+- A Teleport Node that is joined to one of your clusters. We will refer to this
+  cluster as the **leaf cluster** throughout this guide.
+
+  See [Adding Nodes](../adding-nodes.mdx) for how to launch a Teleport Node in
+  your cluster.
+
+</TabItem>
+<TabItem
+  scope={["enterprise"]} label="Enterprise">
+
+- Two running Teleport clusters. For details on how to set up your clusters, see
+  our Enterprise [Getting Started](/docs/enterprise/getting-started) guide.
+
+- The `tctl` admin tool and `tsh` client tool version >= (=teleport.version=),
+  which you can download by visiting the
+  [customer portal](https://dashboard.gravitational.com/web/login).
+
+  ```code
+  $ tctl version
+  # Teleport v(=teleport.version=) go(=teleport.golang=)
   
-  This Node must be joined to the leaf cluster. If you launched your leaf
-  cluster by following
-  [Getting Started on a Linux Server](../../getting-started/linux-server.mdx),
-  this step will already be complete.
+  $ tsh version
+  # Teleport v(=teleport.version=) go(=teleport.golang=)
+  ```
+
+- A Teleport Node that is joined to one of your clusters. We will refer to this
+  cluster as the **leaf cluster** throughout this guide.
+
+  See [Adding Nodes](../adding-nodes.mdx) for how to launch a Teleport Node in
+  your cluster.
+
+</TabItem>
+<TabItem scope={["cloud"]}
+  label="Teleport Cloud">
+
+- A Teleport Cloud account. If you do not have one, visit the
+  [sign up page](https://goteleport.com/signup/) to begin your free trial.
+
+- A second Teleport cluster, which will act as the leaf cluster. For details on
+how to set up this cluster, see one of our
+[Getting Started](/docs/getting-started) guides. 
+
+  As an alternative, you can set up a second Teleport Cloud account.
+
+- The `tctl` admin tool and `tsh` client tool version >= (=cloud.version=).
+  To download these tools, visit the [Downloads](/docs/cloud/downloads) page.
+
+  ```code
+  $ tctl version
+  # Teleport v(=cloud.version=) go(=teleport.golang=)
+  
+  $ tsh version
+  # Teleport v(=cloud.version=) go(=teleport.golang=)
+  ```
+
+- A Teleport Node that is joined to one of your clusters. We will refer to this
+  cluster as the **leaf cluster** throughout this guide.
+
+  See [Adding Nodes](../adding-nodes.mdx) for how to launch a Teleport Node in
+  your cluster.
+
+</TabItem>
+</Tabs>
 
 (!docs/pages/includes/permission-warning.mdx!)
 
 ## Step 1/4. Establish trust between clusters
 
-Before following these instructions, you should make sure that you can connect
-to Teleport.
-
-(!docs/pages/includes/tctl.mdx!)
+{/* TODO: Resume here */}
 
 <Tabs>
 <TabItem scope={["oss", "enterprise"]} label="Self-Hosted">
