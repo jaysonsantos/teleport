@@ -248,8 +248,8 @@ spec:
   tunnel_addr: rootcluster.example.com:11106
   web_proxy_addr: rootcluster.example.com:443
   role_map:
-    - remote: "admin"    # users who have "admin" role on "root"
-      local: ["auditor"] # will be assigned "auditor" role when logging into "leaf"
+    - remote: "editor"
+      local: ["access"]
 ```
 
 Change the fields of `trusted_cluster.yaml` as follows:
@@ -311,24 +311,8 @@ $ curl https://mytenant.teleport.sh/webapi/ping | jq .proxy.ssh.public_addr
 
 #### `spec.role_map`
 
-This field determines the roles that users of the root cluster will acquire when
-they log in to the leaf cluster.
-
-For each element in the list of values, `remote` indicates the name of a role on
-the root cluster. `local` indicates the names of roles on the leaf cluster. Any
-user with the specified role on the root cluster will acquire the roles
-specified in `local` when logging in to the leaf cluster.
-
-For example, consider this configuration:
-
-```yaml
-  role_map:
-    - remote: "admin"
-      local: ["auditor", "editor"]
-```
-
-Any user with the `admin` role on the `root` cluster will be assigned the
-`auditor` and `editor` roles when logging in to the leaf cluster.
+Leave this as-is. We will show you how the `role_map` field works later in this
+guide.
 
 ### Create a Trusted Cluster resource
 
@@ -486,110 +470,39 @@ $ tctl create -f user.yaml
 When you log out of the cluster and log in again, you should see the
 `remote_cluster` you just labeled.
 
-### Edit role mappings
+### Use role mappings
 
 When a leaf cluster establishes trust with a root cluster, it needs a way to
-configure which users from "root" should be allowed in and what permissions
-should they have. Teleport enables you to limit access to Trusted Clusters by
-mapping roles to cluster labels.
+configure which users from the root cluster can access the leaf cluster and what
+permissions should they have. Teleport enables you to limit access to Trusted
+Clusters by mapping roles to cluster labels.
 
-Trusted Clusters use role mapping for RBAC because both root and leaf clusters
-have their own locally defined roles. When creating a `trusted_cluster`
-resource, the administrator of the leaf cluster must define how roles from the
-root cluster map to roles on the leaf cluster.
+When creating a `trusted_cluster` resource, the administrator of the leaf
+cluster must define how roles from the root cluster map to roles on the leaf
+cluster.
 
-<Notice type="tip">
-To update the role map for an existing Trusted Cluster, delete and re-create the cluster with the updated role map.
-</Notice>
-
-We will illustrate the use of dynamic resources to configure Trusted Cluster
-RBAC with an example.
-
-Let's make a few assumptions for this example:
-
-- The cluster "root" has two roles: *user* for regular users and *admin* for
-  local administrators.
-- We want administrators from "root" (but not regular users!) to have restricted
-  access to "leaf". We want to deny them access to machines with
-  `environment:production` and any Government cluster labeled `customer:gov`.
-
-First, we need to create a special role for `root` users on "leaf":
+The `trusted_cluster` resource you created earlier defines the following role
+mappings:
 
 ```yaml
-# Save this into root-user-role.yaml on the leaf cluster and execute:
-# tctl create root-user-role.yaml
-kind: role
-version: v5
-metadata:
-  name: local-admin
-spec:
-  allow:
-    node_labels:
-      '*': '*'
-    # Cluster labels control what clusters user can connect to. The wildcard ('*') means
-    # any cluster. If no role in the role set is using labels and the cluster is not labeled,
-    # the cluster labels check is not applied. Otherwise, cluster labels are always enforced.
-    # This makes the feature backward-compatible.
-    cluster_labels:
-      'env': '*'
-  deny:
-    # Cluster labels control what clusters user can connect to. The wildcard ('*') means
-    # any cluster. By default none is set in deny rules to preserve backward compatibility
-    cluster_labels:
-      'customer': 'gov'
-    node_labels:
-      'environment': 'production'
-```
-
-Now, we need to establish trust between the `admin` role on the root cluster and
-the `admin` role on the leaf cluster. This is done by creating a
-`trusted_cluster` resource on "leaf" which looks like this:
-
-<Tabs>
-<TabItem scope={["oss", "enterprise"]} label="Self-Hosted">
-```yaml
-# Save this as root-cluster.yaml on the auth server of "leaf" and then execute:
-# tctl create root-cluster.yaml
-kind: trusted_cluster
-version: v1
-metadata:
-  name: "name-of-root-cluster"
-spec:
-  enabled: true
   role_map:
-    - remote: admin
-      # admin <-> admin works for the Open Source Edition. Enterprise users
-      # have great control over RBAC.
-      local: [admin]
-  token: "join-token-from-root"
-  tunnel_addr: root.example.com:3024
-  web_proxy_addr: root.example.com:3080
+  - local:
+    - access
+    remote: editor
 ```
-</TabItem>
-<TabItem scope={["cloud"]} label="Teleport Cloud">
-```yaml
-# Save this as root-cluster.yaml on the auth server of "leaf" and then execute:
-# tctl create root-cluster.yaml
-kind: trusted_cluster
-version: v1
-metadata:
-  name: "name-of-root-cluster"
-spec:
-  enabled: true
-  role_map:
-    - remote: admin
-      # admin <-> admin works for the Open Source Edition. Enterprise users
-      # have great control over RBAC.
-      local: [admin]
-  token: "join-token-from-root"
-  tunnel_addr: mytenant.teleport.sh:3024
-  web_proxy_addr: mytenant.teleport.sh:3080
-```
-</TabItem>
-</Tabs>
 
-What if we wanted to let *any* user from "root" to be allowed to connect to
-nodes on "leaf"? In this case, we can use a wildcard `*` in the `role_map` like this:
+With this configuration, users on the root cluster have restricted access to the
+leaf cluster. If a user has the `editor` role on the root cluster, the leaf
+cluster will grant them the `access` role instead.
+
+<Details title="Role mapping syntax">
+
+### Wildcard characters
+
+In role mappings, wildcard characters match any characters in a string.
+
+For example, if we wanted to let *any* user from the root cluster connect to the
+leaf cluster, we can use a wildcard `*` in the `role_map` like this:
 
 ```yaml
 role_map:
@@ -597,14 +510,21 @@ role_map:
     local: [access]
 ```
 
+In this example, we are mapping any roles on the root cluster that begin with
+`cluster-` to the role `clusteradmin` on the leaf cluster.
+
 ```yaml
 role_map:
    - remote: 'cluster-*'
      local: [clusteradmin]
 ```
 
+### Regular expressions
+
 You can also use regular expressions to map user roles from one cluster to
-another. Our regular expression syntax enables you to use capture groups to reference part of an remote role name that matches a regular expression in the corresponding local role:
+another. Our regular expression syntax enables you to use capture groups to
+reference part of an remote role name that matches a regular expression in the
+corresponding local role:
 
 ```yaml
   # In this example, remote users with a remote role called 'remote-one' will be
@@ -617,6 +537,8 @@ Regular expression matching is activated only when the expression starts
 with `^` and ends with `$`.
 
 Regular expressions use Google's re2 syntax, which you can read about in the re2 [syntax guide](https://github.com/google/re2/wiki/Syntax).
+
+</Details>
 
 <Details title="Sharing user traits between Trusted Clusters">
 
@@ -666,6 +588,7 @@ node_labels:
 </Details>
 
 <Details title="Trusted Cluster UI" scopeOnly opened scope={["cloud", "enterprise"]}>
+
 You can easily configure leaf nodes using the Teleport Web UI.
 
 Here is an example of creating trust between a leaf and a root node.
@@ -674,20 +597,24 @@ Here is an example of creating trust between a leaf and a root node.
 
 <Details title="Updating your Trusted Cluster role mapping">
 
-To update the role map for a Trusted Cluster, first, we'll need to remove the
-cluster by executing:
+To update the role map for a Trusted Cluster, run the following commands on the
+leaf cluster.
+
+First, remove the cluster:
 
 ```code
 $ tctl rm tc/root-cluster
 ```
 
-When this is complete, we can re-create the cluster by executing:
+When this is complete, we can re-create the cluster:
 
 ```code
 $ tctl create root-user-updated-role.yaml
 ```
 
 </Details>
+
+{/* TODO: Commands to try out the role mapping */}
 
 ## Step 3/4. Access a Node in your remote cluster
 
