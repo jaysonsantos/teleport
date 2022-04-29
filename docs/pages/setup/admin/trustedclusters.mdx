@@ -10,7 +10,7 @@ acts as a certificate authority (CA) for all users and Nodes in the cluster.
 
 Trusted Clusters allow the users of one cluster, the **root cluster**, to
 seamlessly SSH into the Nodes of another cluster, the **leaf cluster**, while
-remaining authenticated with only a single Proxy Service. The leaf cluster can
+remaining authenticated with only a single Auth Service. The leaf cluster can
 be running behind a firewall with no TCP ports open to the root cluster.
 
 Uses for Trusted Clusters include:
@@ -133,10 +133,10 @@ First, log in to the root cluster.
 <ScopedBlock scope={["oss", "enterprise"]}>
 
 ```code
-$ tsh login --user=myuser --proxy=teleport.example.com
-> Profile URL:        https://teleport.example.com:443
+$ tsh login --user=myuser --proxy=rootcluster.example.com
+> Profile URL:        https://rootcluster.example.com:443
   Logged in as:       myuser
-  Cluster:            teleport.example.com
+  Cluster:            rootcluster.example.com
   Roles:              access, auditor, editor
   Logins:             root
   Kubernetes:         enabled
@@ -148,10 +148,10 @@ $ tsh login --user=myuser --proxy=teleport.example.com
 <ScopedBlock scope={["cloud"]}>
 
 ```code
-$ tsh login --user=myuser --proxy=mytenant.teleport.sh
-> Profile URL:        https://mytenant.teleport.sh:443
+$ tsh login --user=myuser --proxy=myrootclustertenant.teleport.sh
+> Profile URL:        https://rootcluster.teleport.sh:443
   Logged in as:       myuser
-  Cluster:            mytenant.teleport.sh
+  Cluster:            rootcluster.teleport.sh
   Roles:              access, auditor, editor
   Logins:             root
   Kubernetes:         enabled
@@ -165,10 +165,11 @@ Execute the following command on your development machine:
 
 ```code
 # Generates a Trusted Cluster token to allow an inbound connection from a leaf cluster:
-$ tctl tokens add --type=trusted_cluster --ttl=5m --labels=env=demo
-# Example output:
-# The cluster invite token: (=presets.tokens.first=)
-# This token will expire in 5 minutes
+$ tctl tokens add --type=trusted_cluster --ttl=15m
+The cluster invite token: (=presets.tokens.first=)
+This token will expire in 15 minutes
+
+Use this token when defining a trusted cluster resource on a remote cluster.
 ```
 
 This command generates a Trusted Cluster join token with labels. Every leaf
@@ -220,32 +221,32 @@ Log in to the leaf cluster:
 <ScopedBlock scope={["oss", "enterprise"]}>
 
 ```code
-$ tsh login --user=myuser --proxy=cluster.example.com
+$ tsh login --user=myuser --proxy=leafcluster.example.com
 ```
 
 </ScopedBlock>
 <ScopedBlock scope={["cloud"]}>
 
 ```code
-$ tsh login --user=myuser --proxy=leaftenant.teleport.sh
+$ tsh login --user=myuser --proxy=leafcluster.teleport.sh
 ```
 
 </ScopedBlock>
 
-To finish establishing trust between your leaf cluster and your root cluster,
-create a file called `trusted_cluster.yaml` with the following content:
+Ceate a file on your local machine called `trusted_cluster.yaml` with the
+following content:
 
 ```yaml
 # cluster.yaml
 kind: trusted_cluster
 version: v2
 metadata:
-  name: root
+  name: rootcluster.example.com
 spec:
   enabled: true
   token: ba4825847f0378bcdfe18113c4998498
-  tunnel_addr: root.example.com:3024
-  web_proxy_addr: root.example.com:443
+  tunnel_addr: rootcluster.example.com:11106
+  web_proxy_addr: rootcluster.example.com:443
   role_map:
     - remote: "admin"    # users who have "admin" role on "root"
       local: ["auditor"] # will be assigned "auditor" role when logging into "leaf"
@@ -270,16 +271,16 @@ the following command to retrieve the port used for reverse tunneling:
 <ScopedBlock scope={["oss", "enterprise"]}>
 
 ```code
-$ curl https://teleport.example.com/webapi/ping | jq .proxy.ssh.tunnel_listen_addr
-"0.0.0.0:3024"
+$ PROXY=rootcluster.example.com
+$ curl https://${PROXY?}/webapi/ping | jq 'if .proxy.tls_routing_enabled == true then .proxy.ssh.public_addr else .proxy.ssh.ssh_tunnel_public_addr end'
 ```
 
 </ScopedBlock>
 <ScopedBlock scope={["cloud"]}>
 
 ```code
-$ curl https://mytenant.teleport.sh/webapi/ping | jq .proxy.ssh.tunnel_listen_addr
-"0.0.0.0:3024"
+$ PROXY=rootcluster.teleport.sh
+$ curl https://${PROXY?}/webapi/ping | jq 'if .proxy.tls_routing_enabled == true then .proxy.ssh.public_addr else .proxy.ssh.ssh_tunnel_public_addr end'
 ```
 
 </ScopedBlock>
@@ -311,12 +312,12 @@ $ curl https://mytenant.teleport.sh/webapi/ping | jq .proxy.ssh.public_addr
 #### `spec.role_map`
 
 This field determines the roles that users of the root cluster will acquire when
-they log in a Node on the leaf cluster.
+they log in to the leaf cluster.
 
 For each element in the list of values, `remote` indicates the name of a role on
 the root cluster. `local` indicates the names of roles on the leaf cluster. Any
-user with the specified role on the root cluster will obtain roles specified in
-`local` when logging in to the leaf cluster.
+user with the specified role on the root cluster will acquire the roles
+specified in `local` when logging in to the leaf cluster.
 
 For example, consider this configuration:
 
@@ -345,69 +346,145 @@ At this point, users of the root cluster should see the following when they run
 ```code
 $ tsh clusters
 tsh clusters
-Cluster Name         Status Cluster Type Selected 
--------------------- ------ ------------ -------- 
-teleport.example.com online root         *            
+Cluster Name                                          Status Cluster Type Selected 
+----------------------------------------------------- ------ ------------ -------- 
+rootcluster.example.com                               online root         *        
+leafcluster.example.com                               online leaf                   
 ```
 </ScopedBlock>
 <ScopedBlock scope={["cloud"]}>
 
 ```code
 $ tsh clusters
-tsh clusters
-Cluster Name       Status Cluster Type Selected 
------------------- ------ ------------ -------- 
-mytenant.teleport.sh online root         *            
+Cluster Name                                          Status Cluster Type Selected 
+----------------------------------------------------- ------ ------------ -------- 
+rootcluster.teleport.sh                               online root         *        
+leafcluster.teleport.sh                               online leaf                
 ```
 </ScopedBlock>
 
 ## Step 2/4. Manage access to your Trusted Cluster
 
-{/* TODO RESUME HERE */}
-
 ### Apply labels
 
-Teleport gives administrators of root clusters the ability to control cluster labels.
-Allowing leaf clusters to propagate their own labels could create a problem with
-rogue clusters updating their labels to bad values.
+When you create a Trusted Cluster resource on the leaf cluster, the leaf
+cluster's Auth Service sends a request to the root cluster's Proxy Service to
+validate the Trusted Cluster. If the request is valid, the root cluster's Auth
+Service creates a `remote_cluster` resource to represent the Trusted Cluster. 
 
-An administrator of a root cluster can control the labels of a remote cluster or
-a leaf cluster using the remote cluster API without any fear of override:
+By applying labels to the `remote_cluster` resource on the root cluster, you can
+manage access to the leaf cluster. It is not possible to manage labels on the
+leaf cluster—allowing leaf clusters to propagate their own labels could create a
+problem with rogue clusters updating their labels to bad values.
 
-```code
-$ tctl get rc
-
-# kind: remote_cluster
-# metadata:
-#  name: two
-# status:
-#  connection: online
-#  last_heartbeat: "2020-09-14T03:13:59.35518164Z"
-# version: v3
-```
-
-Using `tctl` to update the labels on the remote/leaf cluster:
-
-```code
-$ tctl update rc/two --set-labels=env=prod
-
-# Cluster two has been updated
-```
-
-Using `tctl` to confirm that the updated labels have been set:
+To retrieve a `remote_cluster`, run the following command:
 
 ```code
 $ tctl get rc
 
-# kind: remote_cluster
-# metadata:
-#   labels:
-#    env: prod
-#  name: two
-# status:
-#  connection: online
-#  last_heartbeat: "2020-09-14T03:13:59.35518164Z"
+kind: remote_cluster
+metadata:
+  id: 1651261581522597792
+  name: rootcluster.example.com
+status:
+  connection: online
+  last_heartbeat: "2022-04-29T19:45:35.052864534Z"
+version: v3
 ```
+
+Use `tctl` to update the labels on the leaf cluster:
+
+<ScopedBlock scope="cloud">
+
+```code
+$ tctl update rc/leafcluster.teleport.sh --set-labels=env=prod
+
+# Cluster leafcluster.teleport.sh has been updated
+```
+
+</ScopedBlock>
+<ScopedBlock scope={["oss", "enterprise"]}>
+
+```code
+$ tctl update rc/leafcluster.example.com --set-labels=env=prod
+
+# Cluster leafcluster.example.com has been updated
+```
+
+</ScopedBlock>
+
+Confirm that the updated labels have been set:
+
+```code
+$ tctl get rc
+
+$ sudo tctl get rc
+kind: remote_cluster
+metadata:
+  id: 1651262381521336026
+  labels:
+    env: prod
+  name: rootcluster.example.com
+status:
+  connection: online
+  last_heartbeat: "2022-04-29T19:55:35.053054594Z"
+version: v3
+```
+
+At this point, the `tctl get rc` command may return an empty result. This is
+because you added a label to the cluster. If a cluster has a label, a user's
+role must have explicit permission to access clusters with that label before
+the user can fetch the cluster's information via `tctl`.
+
+Create a role that allow access to all Trusted Cluster labels by adding the
+following content to a file called `prod-cluster-access.yaml`:
+
+```yaml
+kind: role
+metadata:
+  name: prod-cluster-access
+spec:
+  allow:
+    cluster_labels:
+      'env': 'prod'
+version: v5
+```
+
+Create the role:
+
+```code
+$ tctl create prod-cluster-access.yaml
+role 'prod-cluster-access' has been created
+```
+
+Next, retrieve your user's role definition and write it to a file called
+`user.yaml`.
+
+```code
+$ tctl get user/${USERNAME} > user.yaml
+```
+
+Make the following change to `user.yaml`:
+
+```diff
+ spec:
+   roles:
+   - editor
+   - access
++  - prod-cluster-access
+   status:
+     is_locked: false
+     lock_expires: "0001-01-01T00:00:00Z"
+```
+
+Update your user:
+
+```code
+$ tctl create -f user.yaml
+```
+
+When you log out of the cluster and log in again, you should see the
+`remote_cluster` you just labeled.
 
 ### Edit role mappings
 
