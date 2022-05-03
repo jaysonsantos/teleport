@@ -36,6 +36,7 @@ var computerAttribtes = []string{
 	attrName,
 	attrDNSHostName,
 	attrObjectGUID,
+	attrOrganizationalUnit,
 	attrOS,
 	attrOSVersion,
 	attrPrimaryGroupID,
@@ -53,12 +54,13 @@ const (
 	writableDomainControllerGroupID = "516"
 	readOnlyDomainControllerGroupID = "521"
 
-	attrName           = "name"
-	attrDNSHostName    = "dNSHostName" // unusual capitalization is correct
-	attrObjectGUID     = "objectGUID"
-	attrOS             = "operatingSystem"
-	attrOSVersion      = "operatingSystemVersion"
-	attrPrimaryGroupID = "primaryGroupID"
+	attrName               = "name"
+	attrDNSHostName        = "dNSHostName" // unusual capitalization is correct
+	attrObjectGUID         = "objectGUID"
+	attrOrganizationalUnit = "organizationalUnit"
+	attrOS                 = "operatingSystem"
+	attrOSVersion          = "operatingSystemVersion"
+	attrPrimaryGroupID     = "primaryGroupID"
 )
 
 // startDesktopDiscovery starts fetching desktops from LDAP, periodically
@@ -181,6 +183,9 @@ func applyLabelsFromLDAP(entry *ldap.Entry, labels map[string]string) {
 	labels[types.TeleportNamespace+"/computer_name"] = entry.GetAttributeValue(attrName)
 	labels[types.TeleportNamespace+"/os"] = entry.GetAttributeValue(attrOS)
 	labels[types.TeleportNamespace+"/os_version"] = entry.GetAttributeValue(attrOSVersion)
+	if ou := entry.GetAttributeValue(attrOrganizationalUnit); ou != "" {
+		labels[types.TeleportNamespace+"/ou"] = ou
+	}
 	labels[types.OriginLabel] = types.OriginDynamic
 	switch entry.GetAttributeValue(attrPrimaryGroupID) {
 	case writableDomainControllerGroupID, readOnlyDomainControllerGroupID:
