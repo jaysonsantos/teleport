@@ -160,6 +160,10 @@ spec:
   allow: 
     logins:
       - visitor
+    # In case your Node is labeled, you will need to explicitly allow access
+    # to Nodes with labels in order to SSH into your Node.
+    node_labels:
+      '*':'*'
 ```
 
 Create the role:
@@ -729,22 +733,19 @@ $ tsh --proxy=rootcluster.teleport.sh --user=myuser login
 To log in to your Node, first confirm that your Node is joined to your leaf
 cluster:
 
-{/* TODO: Edit this example output to better resemble what I see when running this command */}
-
 ```code
 $ tsh ls --cluster=leafcluster.example.com
 
-# Node Name Node ID            Address        Labels
-# --------- ------------------ -------------- -----------
-# db1.leaf  cf7cc5cd-935e-46f1 10.0.5.2:3022  role=db-leader
-# db2.leaf  3879d133-fe81-3212 10.0.5.3:3022  role=db-follower
+Node Name       Address        Labels                               
+--------------- -------------- ------------------------------------ 
+mynode          127.0.0.1:3022 env=demo,hostname=ip-172-30-13-38 
 ```
 
-{/* TODO: Edit this command to match the output above */
-}
+SSH into your Node:
+
 ```code
 # SSH into any node in "leaf":
-$ tsh ssh --cluster=leaf visitor@db1.leaf
+$ tsh ssh --cluster=leafcluster.example.com visitor@mynode.leafcluster.example.com
 ```
 
 <Admonition
