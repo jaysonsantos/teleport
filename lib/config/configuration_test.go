@@ -2173,7 +2173,7 @@ func TestTLSCert(t *testing.T) {
 	}
 }
 
-func Test_applyKeyStoreConfig(t *testing.T) {
+func TestApplyKeyStoreConfig(t *testing.T) {
 	slotNumber := 1
 
 	tempDir := t.TempDir()
@@ -2267,7 +2267,10 @@ func Test_applyKeyStoreConfig(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "PKCS11 library must not be world-writable",
+			wantErr: fmt.Sprintf(
+				"PKCS11 library (%s) must not be world-writable",
+				worldWritablePKCS11LibPath,
+			),
 		},
 		{
 			name: "err when pin file world-readable",
@@ -2278,7 +2281,10 @@ func Test_applyKeyStoreConfig(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "HSM pin file must not be world-readable",
+			wantErr: fmt.Sprintf(
+				"HSM pin file (%s) must not be world-readable",
+				worldReadablePinFilePath,
+			),
 		},
 	}
 
