@@ -758,22 +758,40 @@ $ tsh ssh --cluster=leafcluster.example.com visitor@mynode.leafcluster.example.c
   
 </Admonition>
 
-## Step 5/5. Disable trust between your clusters
+## Step 5/5. Remove trust between your clusters
 
-You can disable the trust relationship from the leaf cluster by editing the YAML
-definition of the `trusted_cluster` resource.
+### Temporarily disable a Trusted Cluster
 
-Log out of the root cluster and log in to the leaf cluster.
+You can temporarily disable the trust relationship by logging in to the leaf
+cluster and editing the `trusted_cluster` resource you created earlier.
 
 Retrieve the Trusted Cluster resource you created earlier:
+
+<ScopedBlock scope={["oss", "enterprise"]}>
 
 ```code
 $ tctl get trusted_cluster/rootcluster.example.com > trusted_cluster.yaml
 ```
 
-Make the following changes:
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
 
-{/* TODO: Diff showing setting `enabled` to "false" */}
+```code
+$ tctl get trusted_cluster/rootcluster.teleport.sh > trusted_cluster.yaml
+```
+
+</ScopedBlock>
+
+Make the following change to the resource:
+
+```diff
+ spec:
+-  enabled: true
++  enabled: false
+   role_map:
+   - local:
+     - visitor
+```
 
 Update the Trusted Cluster:
 
@@ -781,15 +799,54 @@ Update the Trusted Cluster:
 $ tctl create --force cluster.yaml
 ```
 
-{/* TODO: Verify that this works */}
+This closes the reverse tunnel between your leaf cluster and your root cluster.
+It also deactivates and deactivates the root cluster's certificate authority on
+the leaf cluster.
+
+You can enable the trust relationship again by setting `enabled` to `true`.
 
 ### Remove a leaf cluster relationship from both sides
 
-Once established, to fully remove a trust relationship between two clusters, do
-the following:
+If you want to remove a trust relationship without the possibility of restoring
+it later, you can take the following steps.
 
-- Remove the relationship from the leaf cluster: `tctl rm tc/root.example.com` (`tc` = Trusted Cluster)
-- Remove the relationship from the root cluster: `tctl rm rc/leaf.example.com` (`rc` = remote cluster)
+On the leaf cluster, run the following command. This performs the same tasks as
+setting `enabled` to `false` in a `trusted_cluster` resource, but also removes
+the Trusted Cluster resource from the Auth Service backend:
+
+<ScopedBlock scope={["oss", "enterprise"]}>
+
+```code
+$ tctl rm trusted_cluster/rootcluster.example.com
+```
+
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
+
+```code
+$ tctl rm trusted_cluster/rootcluster.teleport.sh
+```
+
+</ScopedBlock>
+
+Next, run the following command on the root cluster. This command deletes the
+certificate authorities associated with the remote cluster and removes the
+`remote_cluster` resource from the root cluster's Auth Service backend.
+
+<ScopedBlock scope={["oss", "enterprise"]}>
+
+```code
+$ tctl rm rc/leafcluster.example.com
+```
+
+</ScopedBlock>
+<ScopedBlock scope={["cloud"]}>
+
+```code
+$ tctl rm rc/leafcluster.teleport.sh
+```
+
+</ScopedBlock>
 
 <Admonition type="Removing the relationship from the root side only">
 
