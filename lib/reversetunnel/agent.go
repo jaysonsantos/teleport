@@ -264,12 +264,17 @@ func (a *Agent) getHostCheckers() ([]ssh.PublicKey, error) {
 // If this is Web Service port check if proxy support ALPN SNI Listener.
 func (a *Agent) getReverseTunnelDetails() *reverseTunnelDetails {
 	pd := reverseTunnelDetails{TLSRoutingEnabled: false}
+
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
 	resp, err := webclient.Find(
-		&webclient.Config{Context: a.ctx, ProxyAddr: a.Addr.Addr, Insecure: lib.IsInsecureDevMode(), IgnoreHTTPProxy: true})
+		&webclient.Config{Context: ctx, ProxyAddr: a.Addr.Addr, Insecure: lib.IsInsecureDevMode(), IgnoreHTTPProxy: true})
 
 	if err != nil {
 		// If TLS Routing is disabled the address is the proxy reverse tunnel
-		// address the ping call will always fail.
+		// address the ping call will always fail. This might not be accurate if
+		// we timed out, but in that case the connection will fail and a new
+		// agent will try again
 		a.log.Infof("Failed to ping web proxy %q addr: %v", a.Addr.Addr, err)
 	} else {
 		pd.TLSRoutingEnabled = resp.Proxy.TLSRoutingEnabled
